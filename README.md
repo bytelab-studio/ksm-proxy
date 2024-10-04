@@ -24,8 +24,8 @@ interface ProxyConfig {
     enable: boolean;
     domains: ServerDomain[];
     security: {
-        "ip-blacklist": IPString[];
-        "ip-whitelist": IPString[];
+        "ip-blacklist": string[];
+        "ip-whitelist": string[];
         "block-by-default": boolean;
     }
 }
@@ -64,7 +64,12 @@ An extended example configuration for an express.js app
                 "regex": true,
                 "regexFlags": "i"
             }
-        ]
+        ],
+        "security": {
+            "ip-blacklist": ["8.8.8.8"],
+            "ip-whitelist": [],
+            "block-by-default": false
+        }
     },
     "cwd": ".",
     "ports": {
@@ -89,7 +94,12 @@ When added the server can be called by the domains via the proxy server.
 {
     "proxy": {
         "enable": true,
-        "domains": []
+        "domains": [],
+        "security": {
+            "ip-blacklist": [],
+            "ip-whitelist": [],
+            "block-by-default": false
+        }
     },
     "cwd": ".",
     "ports": {
