@@ -1,0 +1,32 @@
+{
+    "name": "ksm-proxy",
+    "version": "1.0.0",
+    "description": "A reverse proxy for ksm",
+    "main": "",
+    "author": "Christoph Koschel",
+    "license": "MIT",
+    "keywords": [
+        "proxy",
+        "reverse-proxy",
+        "ksm"
+    ],
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 0",
+        "preinstall": "node ./scripts/preinstall.js",
+        "postinstall": "node ./scripts/postinstall.js",
+        "preuninstall": "node scripts/preuninstall.js"
+    },
+    "dependencies": {
+        "express": "^4.21.0",
+        "http-proxy": "^1.18.1"
+    },
+    "devDependencies": {
+        "@types/express": "^5.0.0",
+        "@types/http-proxy": "^1.17.15"
+    },
+    "files": [
+        "scripts",
+        "out",
+        "ksm.json"
+    ]
+}

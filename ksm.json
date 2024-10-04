@@ -1,0 +1,23 @@
+{
+    "proxy": {
+        "enable": false,
+        "domains": [],
+        "security": {
+            "ip-blacklist": [],
+            "ip-whitelist": [],
+            "block-by-default": false
+        }
+    },
+    "cwd": ".",
+    "ports": {
+        "http": 80,
+        "https": 443
+    },
+    "env": {},
+    "command": [
+        "node",
+        "./out/app.js",
+        ">",
+        "run.log"
+    ]
+}
