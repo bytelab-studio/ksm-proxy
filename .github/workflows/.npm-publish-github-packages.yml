@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: 16
       - run: npm install -g typescript
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: tsc
       - run: npm test
 
@@ -33,7 +33,7 @@ jobs:
           node-version: 16
           registry-url: https://registry.npmjs.org
       - run: npm install -g typescript
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: tsc
       - run: npm publish --access public
         env:
