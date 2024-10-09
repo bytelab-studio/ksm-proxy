@@ -14,7 +14,7 @@ if (process.geteuid() !== 0) {
     process.exit(1);
 }
 
-const proc = child_process.spawnSync("ksm", ["add"], {
+const proc = child_process.spawnSync("ksm", ["install"], {
     shell: true,
     cwd: path.join(__dirname, "..")
 });

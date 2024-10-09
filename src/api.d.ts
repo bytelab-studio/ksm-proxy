@@ -24,7 +24,7 @@ export interface ServerConfig {
 }
 
 export interface ServerEntry {
-    pid: number | -1;
+    pid: string;
     path: string;
 }
 

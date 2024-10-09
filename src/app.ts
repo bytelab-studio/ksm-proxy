@@ -8,7 +8,6 @@ import * as http from "http";
 import * as https from "https";
 import * as fs from "fs";
 import {validator} from "./validator";
-import {ExtConfig} from "./api";
 
 function isTargetDomain(host: string, domains: api.ServerDomain[]): boolean {
     console.log(host, domains);
