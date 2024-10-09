@@ -5,7 +5,7 @@ A proxy extension for the [KSM](https://github.com/bytelab-studio/ksm) project.
 ## Installation
 
 ```shell
-npm install -g ksm-proxy
+npm install -g @bytelab.studio/ksm-proxy
 ```
 
 > The installation requires root privileges. Also, KSM must be pre-installed before the extension can be added.
