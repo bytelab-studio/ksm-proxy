@@ -1,135 +1,158 @@
 import type * as api from "./api";
+import {validator} from "./validator";
 
-import express from "express";
-import {Express} from "express";
 import httpProxy from "http-proxy";
-import Server from "http-proxy";
+import type Server from "http-proxy";
 import * as http from "http";
 import * as https from "https";
 import * as fs from "fs";
-import {validator} from "./validator";
 
-function isTargetDomain(host: string, domains: api.ServerDomain[]): boolean {
-    console.log(host, domains);
+const KSM_CONFIG: string | undefined = process.env["KSM_CONFIG"];
+const KSM_SERVERLIST: string | undefined = process.env["KSM_SERVERLIST"];
+const HTTP_PORT: number = parseInt(process.env["HTTP_PORT"]!);
+const HTTPS_PORT: number = parseInt(process.env["HTTPS_PORT"]!);
 
-    for (const domain of domains) {
-        if (domain.regex) {
-            const regex: RegExp = new RegExp(domain.domain, domain.regexFlags);
-            if (regex.test(host)) {
-                return true;
-            }
-        } else if (domain.domain == host) {
-            return true;
-        }
-    }
-    return false;
-}
-
-const configFile: string | undefined = process.env["KSM_CONFIG"];
-const serverlistFile: string | undefined = process.env["KSM_SERVERLIST"];
-const httpPort: number = parseInt(process.env["HTTP_PORT"] || "0")
-const httpsPort: number = parseInt(process.env["HTTPS_PORT"] || "0")
-
-if (!configFile || !serverlistFile) {
+if (!KSM_CONFIG || !KSM_SERVERLIST || isNaN(HTTP_PORT) || isNaN(HTTPS_PORT)) {
     console.log("Missing env variables");
     process.exit(1);
 }
 
-const config: api.ExtConfig = JSON.parse(fs.readFileSync(configFile, "utf8"));
-const serverlist: api.Serverlist = JSON.parse(fs.readFileSync(serverlistFile, "utf8"));
-const serverConfigs: api.ExtServerConfig[] = serverlist.map(v => {
-    if (!fs.existsSync(v.path) || !fs.statSync(v.path).isFile()) {
-        return null;
-    }
-
-    const config: api.ExtServerConfig = JSON.parse(fs.readFileSync(v.path, "utf8"));
-    try {
-        validator.validateExtServerConfig(config);
-    } catch {
-        return null;
-    }
-
-    if (!config.proxy.enable) {
-        return null;
-    }
-    return config;
-}).filter(c => c != null) as api.ExtServerConfig[];
+const config: api.ExtConfig = JSON.parse(fs.readFileSync(KSM_CONFIG, "utf8"));
+const serverlist: api.Serverlist = JSON.parse(fs.readFileSync(KSM_SERVERLIST, "utf8"));
 
 if (!config.proxy.enable) {
     console.log("Proxy is not enabled");
     process.exit(1);
 }
 
+const proxy: Server<http.IncomingMessage, http.ServerResponse> = httpProxy.createProxyServer({});
+
+const ksmConfigs: api.ExtServerConfig[] = serverlist.map(entry => {
+    try {
+        const config: api.ExtServerConfig = JSON.parse(fs.readFileSync(entry.path, "utf8"));
+        validator.validateExtServerConfig(config);
+
+        if (!config.proxy.enable) {
+            return null;
+        }
+
+        return config;
+    } catch {
+        return null;
+    }
+}).filter(c => c != null) as api.ExtServerConfig[];
+
+function isDomainAllowed(hostname: string, domains: api.ServerDomain[]): boolean {
+    return domains.some(d => {
+        const {domain, regex, regexFlags} = d;
+        if (regex) {
+            const re: RegExp = new RegExp(domain, regexFlags);
+            const match: boolean = re.test(hostname);
+            console.log(`Domain '${hostname}' matched regex '${domain}': ${match}`);
+            return match;
+        }
+        const match: boolean = domain == hostname;
+        console.log(`Domain '${hostname}' matched '${domain}': ${match}`);
+        return match;
+    });
+}
+
+function findKSMForDomain(hostname: string): api.ExtServerConfig | null {
+    console.log(`Finding KSM configuration for hostname: ${hostname}`);
+    for (let config of ksmConfigs) {
+        if (isDomainAllowed(hostname, config.proxy.domains)) {
+            console.log(`Matched KSM configuration for hostname '${hostname}'.`);
+            return config;
+        }
+    }
+
+    console.log(`No matching KSM configuration found for hostname '${hostname}'.`);
+    return null;
+}
+
+function handleRequest(req: http.IncomingMessage, res: http.ServerResponse, isHttps: boolean): void {
+    const hostname: string | undefined = req.headers.host;
+    const ipAddress: api.IPString | undefined = req.socket.remoteAddress as api.IPString | undefined;
+    if (!hostname) {
+        console.log("400 Bad Request - Corrupted Request.");
+        res.writeHead(400, {'Content-Type': 'text/plain'});
+        res.end("400 Bad Request - Corrupted Request.");
+        return;
+    }
+    if (!ipAddress) {
+        console.log("400 Bad Request - Corrupted Request.");
+        res.writeHead(400, {'Content-Type': 'text/plain'});
+        res.end("400 Bad Request - Corrupted Request.");
+        return;
+    }
+
+    const matchingKSMConfig: api.ExtServerConfig | null = findKSMForDomain(hostname);
+    if (!matchingKSMConfig) {
+        console.log(`404 Not Found - No matching KSM configuration found for hostname: ${hostname}`);
+        res.writeHead(404, {'Content-Type': 'text/plain'});
+        res.end('404 Not Found - No matching KSM configuration found.');
+        return;
+    }
+
+    if (matchingKSMConfig.proxy.security["block-by-default"] && !matchingKSMConfig.proxy.security["ip-whitelist"].includes(ipAddress) ||
+        matchingKSMConfig.proxy.security["ip-blacklist"].includes(ipAddress)) {
+        console.log(`401 Not Found - IP Address is blocked by the server`);
+        res.writeHead(401, {'Content-Type': 'text/plain'});
+        res.end('401 Not Found - IP Address is blocked by the server');
+        return;
+    }
+
+    const targetPort: number = isHttps ? matchingKSMConfig.ports.https : matchingKSMConfig.ports.http;
+    if (targetPort == 0) {
+        console.error('502 Bad Gateway - The target server is not activated.'); // Log the error
+        res.writeHead(502, {'Content-Type': 'text/plain'});
+        res.end('502 Bad Gateway - The target server is not reachable.');
+    }
+    const target: string = `${isHttps ? "https" : "http"}://localhost:${targetPort}`;
+
+    console.log(`Proxying request to: ${target}`);
+
+    proxy.web(req, res, {target}, error => {
+        console.error('502 Proxy error:', error); // Log the error
+        res.writeHead(502, {'Content-Type': 'text/plain'});
+        res.end('502 Bad Gateway - The target server is not reachable.');
+    });
+}
+
 let httpServer: http.Server<typeof http.IncomingMessage, typeof http.ServerResponse> | undefined;
+
+if (config.proxy.enable && HTTP_PORT != 0) {
+    httpServer = http.createServer((req: http.IncomingMessage, res: http.ServerResponse): void => {
+        console.log(`Received HTTP request for: ${req.url}`);
+        handleRequest(req, res, false);
+    });
+}
+
 let httpsServer: https.Server<typeof http.IncomingMessage, typeof http.ServerResponse> | undefined;
 
-const app: Express = express();
-
-if (httpPort != 0) {
-    httpServer = http.createServer(app);
-}
-if (httpsPort != 0 && config.proxy.security.cert.public != "" && config.proxy.security.cert.private != "") {
-    if (
-        fs.existsSync(config.proxy.security.cert.public) && fs.statSync(config.proxy.security.cert.public).isFile() &&
-        fs.existsSync(config.proxy.security.cert.private) && fs.statSync(config.proxy.security.cert.private).isFile()
-    ) {
-        const key: Buffer = fs.readFileSync(config.proxy.security.cert.private);
-        const cert: Buffer = fs.readFileSync(config.proxy.security.cert.public);
-        httpsServer = https.createServer({key, cert}, app);
-    } else {
-        console.log("Public & Private key don't exists or they are not a file")
+if (config.proxy.enable && HTTPS_PORT != 0) {
+    if (fs.existsSync(config.proxy.security.cert.public) && fs.statSync(config.proxy.security.cert.public).isFile() &&
+        fs.existsSync(config.proxy.security.cert.private) && fs.statSync(config.proxy.security.cert.private).isFile()) {
+        const pub: Buffer = fs.readFileSync(config.proxy.security.cert.public);
+        const prv: Buffer = fs.readFileSync(config.proxy.security.cert.private);
+        httpsServer = https.createServer({
+            key: prv,
+            cert: pub
+        }, (req: http.IncomingMessage, res: http.ServerResponse): void => {
+            console.log(`Received HTTPS request for: ${req.url}`);
+            handleRequest(req, res, true);
+        });
     }
 }
-
-if (!httpServer && !httpsServer) {
-    console.log("No server active or able to be active");
-    process.exit(1);
-}
-
-const proxy: Server<http.IncomingMessage, http.ServerResponse> = httpProxy.createProxyServer();
-
-
-app.all("*", (req, res) => {
-    const domain: string = req.headers.host!;
-    const ip: api.IPString = req.ip!.replace(/::.*:/gi, "") as api.IPString;
-
-    console.log(`REQ: ${ip} -> ${domain}`);
-
-    for (const serverConfig of serverConfigs) {
-        if (!isTargetDomain(domain, serverConfig.proxy.domains)) {
-            continue;
-        }
-
-        if (serverConfig.proxy.security["block-by-default"] && !serverConfig.proxy.security["ip-whitelist"].includes(ip)) {
-            continue;
-        }
-        if (serverConfig.proxy.security["ip-blacklist"].includes(ip)) {
-            continue;
-        }
-        try {
-            if (config.proxy.security["https-redirect"]) {
-                proxy.web(req, res, {target: `http://localhost:${serverConfig.ports.https}`});
-                console.log(`     Redirect -> http://localhost:${serverConfig.ports.https}`);
-                return;
-            } else {
-                console.log(`     Redirect -> ${req.protocol}://localhost:${req.protocol.startsWith("https") ? serverConfig.ports.https : serverConfig.ports.http}`);
-                proxy.web(req, res, {target: `${req.protocol}://localhost:${req.protocol.startsWith("https") ? serverConfig.ports.https : serverConfig.ports.http}`});
-                return;
-            }
-        } catch {
-            return;
-        }
-    }
-
-    console.log("     Redirect -> 502");
-
-    res.sendStatus(502);
-});
 
 if (!!httpServer) {
-    httpServer.listen(httpPort);
-}
-if (!!httpsServer) {
-    httpsServer.listen(httpsPort);
+    httpServer.listen(HTTP_PORT, () => {
+        console.log(`Proxy server is running on port ${HTTP_PORT} (HTTP)`);
+    });
 }
 
+if (!!httpsServer) {
+    httpsServer.listen(HTTPS_PORT, () => {
+        console.log(`Proxy server is running on port ${HTTPS_PORT} (HTTPS)`);
+    });
+}

@@ -33,9 +33,7 @@ try {
             cert: {
                 public: "",
                 private: ""
-            },
-            "https-redirect": false,
-            "ip-blacklist": []
+            }
         }
     }
     fs.writeFileSync(configPath, JSON.stringify(config, null, 4));

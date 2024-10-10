@@ -1,6 +1,18 @@
 import type * as api from "./api";
 
 export namespace validator {
+    export function validateExtConfig(config: api.ExtConfig): void {
+        if (typeof config.proxy.security.cert.public != "string") {
+            throw new Error("Invalid file format (proxy.security.cert.public)");
+        }
+        if (typeof config.proxy.security.cert.private != "string") {
+            throw new Error("Invalid file format (proxy.security.cert.private)");
+        }
+        if (typeof config.proxy.enable != "boolean") {
+            throw new Error("Invalid file format (proxy.enable)");
+        }
+    }
+
     export function validateExtServerConfig(serverConfig: api.ExtServerConfig): void {
         if (typeof serverConfig.proxy.enable != "boolean") {
             throw new Error("Invalid file format (proxy.enable)");

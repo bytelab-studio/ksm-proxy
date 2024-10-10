@@ -123,14 +123,12 @@ KSM Proxy extends the base configuration located at `/etc/ksm/config.json` with 
             "cert": {
                 "public": "",
                 "private": ""
-            },
-            "https-redirect": false,
-            "ip-blacklist": []
+            }
         }
     },
     "env": {
-        "ksm-config": "/etc/ksm/config.json",
-        "ksm-serverlist": "/etc/ksm/serverlist"
+        "KSM_CONFIG": "/etc/ksm/config.json",
+        "KSM_SERVERLIST": "/etc/ksm/serverlist"
     }
 }
 ```

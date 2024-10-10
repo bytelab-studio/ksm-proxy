@@ -16,8 +16,6 @@
     "env": {},
     "command": [
         "node",
-        "./out/app.js",
-        ">",
-        "run.log"
+        "./out/app.js"
     ]
 }

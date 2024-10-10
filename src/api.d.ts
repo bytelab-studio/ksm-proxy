@@ -53,8 +53,6 @@ export interface ProxyConfig {
             public: string;
             private: string;
         }
-        "https-redirect": boolean;
-        "ip-blacklist": IPString[];
     }
 }
 

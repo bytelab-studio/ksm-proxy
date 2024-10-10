@@ -14,7 +14,7 @@ if (process.geteuid() !== 0) {
     process.exit(1);
 }
 
-const proc = child_process.spawnSync("ksm", ["remove"], {
+const proc = child_process.spawnSync("ksm", ["uninstall"], {
     shell: true,
     cwd: path.join(__dirname, "..")
 });
